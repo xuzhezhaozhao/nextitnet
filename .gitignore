@@ -1,0 +1,7 @@
+*.pyc
+*~
+*.swp
+*.swo
+
+model_dir
+export_model_dir
