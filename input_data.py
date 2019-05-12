@@ -102,10 +102,7 @@ class InputData(object):
                     continue
                 if token in self.word_to_id:
                     ids.append(self.word_to_id[token])
-                else:
-                    # TODO whether skip OOV words for eval ?
-                    # ids.append(0)
-                    pass
+                # skip OOV words
             if len(ids) < 2:
                 continue
             ids = ids[-self.max_seq_lengh:]
