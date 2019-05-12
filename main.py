@@ -20,8 +20,11 @@ flags = tf.flags.FLAGS
 tf.app.flags.DEFINE_string('model_dir', 'model_dir', '')
 tf.app.flags.DEFINE_string('export_model_dir', 'export_model_dir', '')
 tf.app.flags.DEFINE_bool('do_train', False, '')
+tf.app.flags.DEFINE_bool('do_eval', False, '')
 tf.app.flags.DEFINE_string('train_data_path', '', 'train data path')
+tf.app.flags.DEFINE_string('eval_data_path', '', 'eval data path')
 tf.app.flags.DEFINE_integer('batch_size', 64, 'batch size')
+tf.app.flags.DEFINE_integer('eval_batch_size', 64, 'eval batch size')
 tf.app.flags.DEFINE_integer('epoch', 5, '')
 tf.app.flags.DEFINE_integer('min_count', 5, '')
 tf.app.flags.DEFINE_integer('max_seq_lengh', 5, '')
@@ -100,10 +103,7 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
             embedding_dim=embedding_dim,
             dilations=dilations,
             kernel_size=kernel_size,
-            num_sampled=num_sampled,
             training=is_training)
-        loss = model.loss
-        tf.summary.scalar('loss', loss)
 
         tvars = tf.trainable_variables()
         tf.logging.info("**** Trainable Variables ****")
@@ -111,7 +111,16 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
             tf.logging.info(" name = %s, shape = %s", var.name, var.shape)
 
         output_spec = None
+        labels = tf.reshape(labels, [-1, 1])
         if mode == tf.estimator.ModeKeys.TRAIN:
+            logits = model.logits
+            # _, ids = tf.nn.top_k(logits, 10)  # TODO
+            # create_metrics(labels, logits, ids)  # TODO summary metrics
+            loss = tf.reduce_mean(
+                tf.nn.sampled_softmax_loss(
+                    model.nce_weights, model.nce_biases, labels,
+                    model.output, num_sampled, num_classes))
+            tf.summary.scalar('loss', loss)
             train_op = optimization.create_optimizer(
                 loss=loss,
                 init_lr=learning_rate,
@@ -122,7 +131,16 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                 loss=loss,
                 train_op=train_op)
         elif mode == tf.estimator.ModeKeys.EVAL:
-            pass
+            logits = model.logits
+            loss = tf.losses.sparse_softmax_cross_entropy(
+                labels=tf.reshape(labels, [-1]),
+                logits=logits)
+            _, ids = tf.nn.top_k(logits, 10)  # TODO
+            metrics = create_metrics(labels, logits, ids)
+            output_spec = tf.estimator.EstimatorSpec(
+                mode=mode,
+                loss=loss,
+                eval_metric_ops=metrics)
         else:
             pass
         return output_spec
@@ -130,13 +148,46 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
     return model_fn
 
 
+def create_metrics(labels, logits, ids):
+    """Get metrics dict."""
+    ntargets = 1
+    recall_k = 10  # TODO
+    recall_k2 = recall_k // 2
+    recall_k4 = recall_k // 4
+    with tf.name_scope('eval_metrics'):
+        predicted = ids[:, :ntargets]
+        accuracy = tf.metrics.accuracy(labels=labels, predictions=predicted)
+        recall_at_top_k = tf.metrics.recall_at_top_k(
+            labels=labels, predictions_idx=ids, k=recall_k)
+        recall_at_top_k2 = tf.metrics.recall_at_top_k(
+            labels=labels, predictions_idx=ids[:, :recall_k2], k=recall_k2)
+        recall_at_top_k4 = tf.metrics.recall_at_top_k(
+            labels=labels, predictions_idx=ids[:, :recall_k4], k=recall_k4)
+        precision_at_top_k = tf.metrics.precision_at_top_k(
+            labels=labels, predictions_idx=ids, k=recall_k)
+        average_precision_at_k = tf.metrics.average_precision_at_k(
+            labels=labels, predictions=logits, k=recall_k)
+        metrics = {'accuracy': accuracy,
+                   'recall_at_top_{}'.format(recall_k): recall_at_top_k,
+                   'recall_at_top_{}'.format(recall_k2): recall_at_top_k2,
+                   'recall_at_top_{}'.format(recall_k4): recall_at_top_k4,
+                   'precision_at_top_{}'.format(recall_k): precision_at_top_k,
+                   'average_precision_at_{}'
+                   .format(recall_k): average_precision_at_k}
+        for key in metrics.keys():
+            tf.summary.scalar(key, metrics[key][1])
+    return metrics
+
+
 def main(_):
     tf.logging.set_verbosity(tf.logging.INFO)
     data = input_data.InputData(
         flags.train_data_path,
+        flags.eval_data_path,
         flags.min_count,
         flags.max_seq_lengh,
         flags.batch_size,
+        flags.eval_batch_size,
         flags.epoch,
         True)
     num_train_steps = int(data.num_train_samples /
@@ -151,6 +202,11 @@ def main(_):
         tf.logging.info("  Num train steps = %d", num_train_steps)
         tf.logging.info("  Num warmup steps = %d", num_warmup_steps)
         estimator.train(input_fn=data.build_train_input_fn())
+    if flags.do_eval:
+        tf.logging.info("***** Running evaluating *****")
+        tf.logging.info("  Num examples = %d", data.num_eval_samples)
+        tf.logging.info("  Batch size = %d", flags.eval_batch_size)
+        estimator.evaluate(input_fn=data.build_eval_input_fn())
 
 
 if __name__ == '__main__':

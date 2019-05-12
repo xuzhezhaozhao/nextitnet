@@ -17,7 +17,6 @@ class NextItemModel(object):
                  embedding_dim,
                  dilations,
                  kernel_size,
-                 num_sampled,
                  training):
         self.input_ids = input_ids
         self.labels = labels
@@ -25,7 +24,6 @@ class NextItemModel(object):
         self.embedding_dim = embedding_dim
         self.dilations = dilations
         self.kernel_size = kernel_size
-        self.num_sampled = num_sampled
         self.training = training
 
         self.build_graph(training=training)
@@ -38,17 +36,12 @@ class NextItemModel(object):
             inputs = self.residual_block(
                 inputs, dilation, layer_id, self.embedding_dim,
                 self.kernel_size, causal=True, training=training)
-        tf.logging.info(" output = %s", inputs)
-        logits = tf.reshape(inputs, [-1, self.embedding_dim])
-        tf.logging.info(" logits = %s", logits)
-        nce_weights, nce_biases = self.get_nce_weights_and_biases()
-        labels_flat = tf.reshape(self.labels, [-1, 1])
-        loss = tf.nn.sampled_softmax_loss(
-            nce_weights, nce_biases, labels_flat, logits,
-            self.num_sampled, self.num_classes)
-
-        self.logits = logits
-        self.loss = tf.reduce_mean(loss)
+        self.output = tf.reshape(inputs, [-1, self.embedding_dim])
+        tf.logging.info(" output = %s", self.output)
+        self.nce_weights, self.nce_biases = self.get_nce_weights_and_biases()
+        self.logits = tf.nn.xw_plus_b(
+            self.output, tf.transpose(self.nce_weights), self.nce_biases)
+        tf.logging.info(" logits = %s", self.logits)
 
     def get_embeddings(self):
         """Get embeddings variables."""
@@ -110,8 +103,11 @@ class NextItemModel(object):
                 initializer=tf.constant_initializer(0.0))
 
             if causal:
+                # see paper fig.4, mask implemented by padding
+                tf.logging.info('x = %s', x)
                 padding = [[0, 0], [(kernel_size - 1) * dilation, 0], [0, 0]]
                 padded = tf.pad(x, padding)
+                tf.logging.info('padded = %s', padded)
                 input_expanded = tf.expand_dims(padded, axis=1)
                 out = tf.nn.atrous_conv2d(input_expanded, weight,
                                           rate=dilation, padding='VALID')
