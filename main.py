@@ -103,6 +103,8 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
             num_sampled=num_sampled,
             training=is_training)
         loss = model.loss
+        tf.summary.scalar('loss', loss)
+
         tvars = tf.trainable_variables()
         tf.logging.info("**** Trainable Variables ****")
         for var in tvars:

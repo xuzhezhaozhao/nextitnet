@@ -32,12 +32,15 @@ class NextItemModel(object):
 
     def build_graph(self, training=True):
         self.embeddings = self.get_embeddings()
+        # TODO mask embedding_lookup?
         inputs = tf.nn.embedding_lookup(self.embeddings, self.input_ids)
         for layer_id, dilation in enumerate(self.dilations):
             inputs = self.residual_block(
                 inputs, dilation, layer_id, self.embedding_dim,
                 self.kernel_size, causal=True, training=training)
+        tf.logging.info(" output = %s", inputs)
         logits = tf.reshape(inputs, [-1, self.embedding_dim])
+        tf.logging.info(" logits = %s", logits)
         nce_weights, nce_biases = self.get_nce_weights_and_biases()
         labels_flat = tf.reshape(self.labels, [-1, 1])
         loss = tf.nn.sampled_softmax_loss(
@@ -64,7 +67,7 @@ class NextItemModel(object):
         with tf.variable_scope("nce_layer_variables", reuse=tf.AUTO_REUSE):
             nce_weights = tf.get_variable(
                 'nce_weights',
-                initializer=tf.random_normal(
+                initializer=tf.truncated_normal(
                     [self.num_classes, self.embedding_dim], 0.0, 0.01))
             nce_biases = tf.get_variable(
                 'nce_biases',
@@ -74,16 +77,25 @@ class NextItemModel(object):
     def residual_block(self, x, dilation, layer_id, channels,
                        kernel_size, causal=True, training=True):
         block_name = "res_{}_{}".format(layer_id, dilation)
+        tf.logging.info("build block %s ...", block_name)
         with tf.variable_scope(block_name, reuse=tf.AUTO_REUSE):
             y = self.conv1d(x, channels, dilation, kernel_size,
                             causal=causal, name="dilated_conv1")
+            tf.logging.info(y)
             y = self.layer_norm(y, name="layer_norm1", trainable=training)
+            tf.logging.info(y)
             y = tf.nn.relu(y)
+            tf.logging.info(y)
             y = self.conv1d(y, channels, 2*dilation, kernel_size,
                             causal=causal, name="dilated_conv2")
+            tf.logging.info(y)
             y = self.layer_norm(y, name="layer_norm2", trainable=training)
+            tf.logging.info(y)
             y = tf.nn.relu(y)
-            return x + y
+            tf.logging.info(y)
+            y += x
+            tf.logging.info(y)
+            return y
 
     def conv1d(self, x, channels, dilation=1, kernel_size=1, causal=False,
                name='conv1d'):
