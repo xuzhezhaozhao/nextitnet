@@ -142,7 +142,7 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
             loss = tf.losses.sparse_softmax_cross_entropy(
                 labels=tf.reshape(labels, [-1]),
                 logits=logits)
-            _, ids = tf.nn.top_k(logits, 50)  # TODO
+            _, ids = tf.nn.top_k(logits, 20)  # TODO
             metrics = create_metrics(labels, logits, ids)
             output_spec = tf.estimator.EstimatorSpec(
                 mode=mode,
@@ -158,7 +158,7 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
 def create_metrics(labels, logits, ids):
     """Get metrics dict."""
     ntargets = 1
-    recall_k = 50  # TODO
+    recall_k = 20  # TODO
     recall_k2 = recall_k // 2
     recall_k4 = recall_k // 4
     with tf.name_scope('eval_metrics'):
@@ -174,16 +174,44 @@ def create_metrics(labels, logits, ids):
             labels=labels, predictions_idx=ids, k=recall_k)
         average_precision_at_k = tf.metrics.average_precision_at_k(
             labels=labels, predictions=logits, k=recall_k)
-        metrics = {'accuracy': accuracy,
-                   'recall_at_top_{}'.format(recall_k): recall_at_top_k,
-                   'recall_at_top_{}'.format(recall_k2): recall_at_top_k2,
-                   'recall_at_top_{}'.format(recall_k4): recall_at_top_k4,
-                   'precision_at_top_{}'.format(recall_k): precision_at_top_k,
-                   'average_precision_at_{}'
-                   .format(recall_k): average_precision_at_k}
+        mrr_at_k = mrr_metric(labels, logits, recall_k)
+        mrr_at_k2 = mrr_metric(labels, logits, recall_k2)
+        mrr_at_k4 = mrr_metric(labels, logits, recall_k4)
+
+        metrics = {
+            'accuracy': accuracy,
+            'recall_at_top_{}'.format(recall_k): recall_at_top_k,
+            'recall_at_top_{}'.format(recall_k2): recall_at_top_k2,
+            'recall_at_top_{}'.format(recall_k4): recall_at_top_k4,
+            'precision_at_top_{}'.format(recall_k): precision_at_top_k,
+            'average_precision_at_{}'.format(recall_k): average_precision_at_k,
+            'mrr_at_{}'.format(recall_k): mrr_at_k,
+            'mrr_at_{}'.format(recall_k2): mrr_at_k2,
+            'mrr_at_{}'.format(recall_k4): mrr_at_k4
+        }
         for key in metrics.keys():
             tf.summary.scalar(key, metrics[key][1])
     return metrics
+
+
+def mrr_metric(labels,
+               predictions,
+               k,
+               weights=None,
+               metrics_collections=None,
+               updates_collections=None,
+               name=None):
+    with tf.name_scope(name, 'mrr_metric', [predictions, labels, weights]):
+        _, r = tf.nn.top_k(predictions, k)
+        get_ranked_indicies = tf.expand_dims(tf.where(
+            tf.equal(tf.cast(r, tf.int64), labels))[:, 1], 1)
+        rr = 1.0 / (tf.to_float(get_ranked_indicies) + 1.0)
+        m_rr, update_mrr_op = tf.metrics.mean(rr, weights=weights, name=name)
+        if metrics_collections:
+            tf.add_to_collection(metrics_collections, m_rr)
+        if updates_collections:
+            tf.add_to_collections(updates_collections, update_mrr_op)
+        return m_rr, update_mrr_op
 
 
 def main(_):
