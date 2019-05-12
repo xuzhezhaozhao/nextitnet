@@ -2,6 +2,7 @@
 *~
 *.swp
 *.swo
+.DS_Store
 
 model_dir
 export_model_dir
