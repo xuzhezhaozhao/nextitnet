@@ -114,20 +114,18 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
 
         output_spec = None
         labels = tf.reshape(labels, [-1, 1])
+        valid_idx = tf.where(tf.not_equal(labels, 0))[:, 0]
+        labels = tf.nn.embedding_lookup(labels, valid_idx)
         if mode == tf.estimator.ModeKeys.TRAIN:
-            logits = model.logits
+            output = tf.nn.embedding_lookup(model.output, valid_idx)
             loss = tf.nn.sampled_softmax_loss(
                 model.nce_weights,
                 model.nce_biases,
                 labels,
-                model.output,
+                output,
                 num_sampled,
                 num_classes,
                 partition_strategy="div")
-            input_masks = features['input_masks']
-            input_masks = tf.reshape(input_masks, [-1, 1])
-            input_masks = tf.to_float(input_masks)
-            loss = loss * input_masks
             loss = tf.reduce_mean(loss)
             tf.summary.scalar('loss', loss)
             train_op = optimization.create_optimizer(
@@ -140,7 +138,7 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                 loss=loss,
                 train_op=train_op)
         elif mode == tf.estimator.ModeKeys.EVAL:
-            logits = model.logits
+            logits = tf.nn.embedding_lookup(model.logits, valid_idx)
             loss = tf.losses.sparse_softmax_cross_entropy(
                 labels=tf.reshape(labels, [-1]),
                 logits=logits)
