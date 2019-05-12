@@ -38,6 +38,7 @@ tf.app.flags.DEFINE_float(
     "warmup_proportion", 0.1,
     "Proportion of training to perform linear learning rate warmup for. "
     "E.g., 0.1 = 10% of training.")
+tf.app.flags.DEFINE_integer('recall_k', 20, '')
 
 # log flags
 tf.app.flags.DEFINE_integer('save_summary_steps', 100, '')
@@ -74,7 +75,8 @@ def build_estimator(flags, num_classes, num_train_steps, num_warmup_steps):
         flags.num_sampled,
         flags.learning_rate,
         num_train_steps,
-        num_warmup_steps)
+        num_warmup_steps,
+        flags.recall_k)
     estimator_keys['config'] = config
     estimator = tf.estimator.Estimator(**estimator_keys)
 
@@ -83,7 +85,7 @@ def build_estimator(flags, num_classes, num_train_steps, num_warmup_steps):
 
 def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                      num_sampled, learning_rate,
-                     num_train_steps, num_warmup_steps):
+                     num_train_steps, num_warmup_steps, recall_k):
     """Returns 'model_fn' closure for Estimator."""
 
     def model_fn(features, labels, mode):
@@ -142,8 +144,8 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
             loss = tf.losses.sparse_softmax_cross_entropy(
                 labels=tf.reshape(labels, [-1]),
                 logits=logits)
-            _, ids = tf.nn.top_k(logits, 20)  # TODO
-            metrics = create_metrics(labels, logits, ids)
+            _, ids = tf.nn.top_k(logits, )
+            metrics = create_metrics(labels, logits, ids, recall_k)
             output_spec = tf.estimator.EstimatorSpec(
                 mode=mode,
                 loss=loss,
@@ -155,14 +157,13 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
     return model_fn
 
 
-def create_metrics(labels, logits, ids):
+def create_metrics(labels, logits, ids, recall_k):
     """Get metrics dict."""
-    ntargets = 1
-    recall_k = 20  # TODO
+
     recall_k2 = recall_k // 2
     recall_k4 = recall_k // 4
     with tf.name_scope('eval_metrics'):
-        predicted = ids[:, :ntargets]
+        predicted = ids[:, :1]
         accuracy = tf.metrics.accuracy(labels=labels, predictions=predicted)
         recall_at_top_k = tf.metrics.recall_at_top_k(
             labels=labels, predictions_idx=ids, k=recall_k)
@@ -170,10 +171,6 @@ def create_metrics(labels, logits, ids):
             labels=labels, predictions_idx=ids[:, :recall_k2], k=recall_k2)
         recall_at_top_k4 = tf.metrics.recall_at_top_k(
             labels=labels, predictions_idx=ids[:, :recall_k4], k=recall_k4)
-        precision_at_top_k = tf.metrics.precision_at_top_k(
-            labels=labels, predictions_idx=ids, k=recall_k)
-        average_precision_at_k = tf.metrics.average_precision_at_k(
-            labels=labels, predictions=logits, k=recall_k)
         mrr_at_k = mrr_metric(labels, logits, recall_k)
         mrr_at_k2 = mrr_metric(labels, logits, recall_k2)
         mrr_at_k4 = mrr_metric(labels, logits, recall_k4)
@@ -183,8 +180,6 @@ def create_metrics(labels, logits, ids):
             'recall_at_top_{}'.format(recall_k): recall_at_top_k,
             'recall_at_top_{}'.format(recall_k2): recall_at_top_k2,
             'recall_at_top_{}'.format(recall_k4): recall_at_top_k4,
-            'precision_at_top_{}'.format(recall_k): precision_at_top_k,
-            'average_precision_at_{}'.format(recall_k): average_precision_at_k,
             'mrr_at_{}'.format(recall_k): mrr_at_k,
             'mrr_at_{}'.format(recall_k2): mrr_at_k2,
             'mrr_at_{}'.format(recall_k4): mrr_at_k4

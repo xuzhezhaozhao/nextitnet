@@ -26,11 +26,12 @@ python main.py \
   --epoch=5 \
   --min_count=1 \
   --max_seq_lengh=5 \
-  --embedding_dim=100 \
-  --dilations='1,2' \
+  --embedding_dim=20 \
+  --dilations='1,2,4' \
   --kernel_size=3 \
-  --num_sampled=100 \
+  --num_sampled=10 \
   --num_gpu=0 \
+  --recall_k=20 \
   --learning_rate=0.01 \
   --warmup_proportion=0.1 \
   --save_summary_steps=100 \
