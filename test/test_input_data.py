@@ -23,6 +23,7 @@ flags.epoch = 1
 
 inputdata = InputData(flags)
 features, labels = inputdata.build_train_input_fn()()
+print(features['inputs'].get_shape()[-1])
 with tf.Session() as sess:
     coord = coordinator.Coordinator()
     threads = tf.train.start_queue_runners(sess, coord=coord)
