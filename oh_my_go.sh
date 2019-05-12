@@ -25,11 +25,11 @@ python main.py \
   --eval_batch_size=32 \
   --epoch=10 \
   --min_count=3 \
-  --max_seq_lengh=50 \
+  --max_seq_lengh=200 \
   --embedding_dim=100 \
   --dilations='1,2,4' \
   --kernel_size=3 \
-  --num_sampled=10 \
+  --num_sampled=100 \
   --num_gpu=0 \
   --learning_rate=0.02 \
   --warmup_proportion=0.1 \

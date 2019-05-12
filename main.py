@@ -114,12 +114,19 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
         labels = tf.reshape(labels, [-1, 1])
         if mode == tf.estimator.ModeKeys.TRAIN:
             logits = model.logits
-            # _, ids = tf.nn.top_k(logits, 10)  # TODO
-            # create_metrics(labels, logits, ids)  # TODO summary metrics
-            loss = tf.reduce_mean(
-                tf.nn.sampled_softmax_loss(
-                    model.nce_weights, model.nce_biases, labels,
-                    model.output, num_sampled, num_classes))
+            loss = tf.nn.sampled_softmax_loss(
+                model.nce_weights,
+                model.nce_biases,
+                labels,
+                model.output,
+                num_sampled,
+                num_classes,
+                partition_strategy="div")
+            input_masks = features['input_masks']
+            input_masks = tf.reshape(input_masks, [-1, 1])
+            input_masks = tf.to_float(input_masks)
+            loss = loss * input_masks
+            loss = tf.reduce_mean(loss)
             tf.summary.scalar('loss', loss)
             train_op = optimization.create_optimizer(
                 loss=loss,
@@ -135,7 +142,7 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
             loss = tf.losses.sparse_softmax_cross_entropy(
                 labels=tf.reshape(labels, [-1]),
                 logits=logits)
-            _, ids = tf.nn.top_k(logits, 10)  # TODO
+            _, ids = tf.nn.top_k(logits, 50)  # TODO
             metrics = create_metrics(labels, logits, ids)
             output_spec = tf.estimator.EstimatorSpec(
                 mode=mode,
@@ -151,7 +158,7 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
 def create_metrics(labels, logits, ids):
     """Get metrics dict."""
     ntargets = 1
-    recall_k = 10  # TODO
+    recall_k = 50  # TODO
     recall_k2 = recall_k // 2
     recall_k4 = recall_k // 4
     with tf.name_scope('eval_metrics'):
