@@ -17,7 +17,6 @@ class NextItemModel(object):
                  embedding_dim,
                  dilations,
                  kernel_size,
-                 use_nce,
                  num_sampled,
                  training):
         self.input_ids = input_ids
@@ -26,7 +25,6 @@ class NextItemModel(object):
         self.embedding_dim = embedding_dim
         self.dilations = dilations
         self.kernel_size = kernel_size
-        self.use_nce = use_nce
         self.num_sampled = num_sampled
         self.training = training
 
@@ -39,18 +37,13 @@ class NextItemModel(object):
             inputs = self.residual_block(
                 inputs, dilation, layer_id, self.embedding_dim,
                 self.kernel_size, causal=True, training=training)
-        if self.use_nce:
-            logits = tf.reshape(inputs, [-1, self.embedding_dim])
-            nce_weights, nce_biases = self.get_nce_weights_and_biases()
-            loss = tf.nn.sampled_softmax_loss(
-                nce_weights, nce_biases, self.labels, logits,
-                self.num_sampled, self.num_classes)
-        else:
-            logits = self.conv1d(tf.nn.relu(inputs), self.num_classes,
-                                 name='logits')
-            logits = tf.reshape(logits, [-1, self.num_classes])
-            loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                labels=self.labels, logits=logits)
+        logits = tf.reshape(inputs, [-1, self.embedding_dim])
+        nce_weights, nce_biases = self.get_nce_weights_and_biases()
+        labels_flat = tf.reshape(self.labels, [-1, 1])
+        loss = tf.nn.sampled_softmax_loss(
+            nce_weights, nce_biases, labels_flat, logits,
+            self.num_sampled, self.num_classes)
+
         self.logits = logits
         self.loss = tf.reduce_mean(loss)
 
@@ -107,7 +100,7 @@ class NextItemModel(object):
             if causal:
                 padding = [[0, 0], [(kernel_size - 1) * dilation, 0], [0, 0]]
                 padded = tf.pad(x, padding)
-                input_expanded = tf.expand_dims(padded, dim=1)
+                input_expanded = tf.expand_dims(padded, axis=1)
                 out = tf.nn.atrous_conv2d(input_expanded, weight,
                                           rate=dilation, padding='VALID')
                 out += bias

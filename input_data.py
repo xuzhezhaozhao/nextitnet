@@ -27,16 +27,19 @@ class InputData(object):
                     continue
                 counter[token] += 1
 
-            word_to_id = {}
-            id_to_word = [""]  # one padding
-            idx = 1
-            for key in counter:
-                cnt = counter[key]
-                if cnt < min_count:
-                    continue
-                word_to_id[key] = idx
-                id_to_word.append(key)
-                idx += 1
+        word_to_id = {}
+        id_to_word = [""]  # one padding
+        idx = 1
+        for key in counter:
+            cnt = counter[key]
+            if cnt < min_count:
+                continue
+            word_to_id[key] = idx
+            id_to_word.append(key)
+            idx += 1
+        tf.logging.info("**** Vocabulary Info ****")
+        tf.logging.info(" vocabulary size = %d", len(id_to_word))
+
         return word_to_id, id_to_word
 
     def build_train_input_fn(self):
@@ -53,18 +56,19 @@ class InputData(object):
                 # TODO how to handle OOV?
             if len(ids) < 2:
                 continue
-            feature = ids[-self.flags.max_seq_lengh:-1]
-            label = ids[-1]
-            if len(feature) < self.flags.max_seq_lengh:
-                for _ in range(self.flags.max_seq_lengh - len(feature)):
-                    feature.append(0)
-            features.append(feature)
-            labels.append(label)
+            ids = ids[-self.flags.max_seq_lengh:]
+            if len(ids) < self.flags.max_seq_lengh:
+                for _ in range(self.flags.max_seq_lengh - len(ids)):
+                    ids.append(0)
+            features.append(ids[:-1])
+            labels.append(ids[1:])
         features = np.array(features)
-        labels = np.array(labels).reshape([-1, 1])
+        labels = np.array(labels)
+        tf.logging.info("**** Samples Info ****")
+        tf.logging.info(" samples num = %d", len(features))
 
         return tf.estimator.inputs.numpy_input_fn(
-            x={'inputs': features},
+            x={'input_ids': features},
             y=labels,
             batch_size=self.flags.batch_size,
             num_epochs=self.flags.epoch,
