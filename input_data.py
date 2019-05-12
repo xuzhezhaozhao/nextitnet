@@ -12,13 +12,27 @@ from collections import Counter
 
 class InputData(object):
 
-    def __init__(self, flags):
-        self.flags = flags
-        self.word_to_id, self.id_to_word = self.build_vocabulary()
+    def __init__(
+            self,
+            train_data_path,
+            min_count,
+            max_seq_lengh,
+            batch_size,
+            epoch,
+            shuffle):
+        self.train_data_path = train_data_path
+        self.min_count = min_count
+        self.max_seq_lengh = max_seq_lengh
+        self.batch_size = batch_size
+        self.epoch = epoch
+        self.shuffle = shuffle
+
+        self.build_vocabulary()
+        self.build_train_samples()
 
     def build_vocabulary(self):
-        data_path = self.flags.train_data_path
-        min_count = self.flags.min_count
+        data_path = self.train_data_path
+        min_count = self.min_count
         counter = Counter()
         for line in open(data_path):
             tokens = line.split()
@@ -27,25 +41,24 @@ class InputData(object):
                     continue
                 counter[token] += 1
 
-        word_to_id = {}
-        id_to_word = [""]  # one padding
+        self.word_to_id = {}
+        self.id_to_word = [""]  # one padding
         idx = 1
         for key in counter:
             cnt = counter[key]
             if cnt < min_count:
                 continue
-            word_to_id[key] = idx
-            id_to_word.append(key)
+            self.word_to_id[key] = idx
+            self.id_to_word.append(key)
             idx += 1
+        self.vocabulary_size = len(self.id_to_word)
         tf.logging.info("**** Vocabulary Info ****")
-        tf.logging.info(" vocabulary size = %d", len(id_to_word))
+        tf.logging.info(" vocabulary size = %d", self.vocabulary_size)
 
-        return word_to_id, id_to_word
-
-    def build_train_input_fn(self):
+    def build_train_samples(self):
         features = []
         labels = []
-        for line in open(self.flags.train_data_path):
+        for line in open(self.train_data_path):
             tokens = line.split()
             ids = []
             for token in tokens:
@@ -53,24 +66,25 @@ class InputData(object):
                     continue
                 if token in self.word_to_id:
                     ids.append(self.word_to_id[token])
-                # TODO how to handle OOV?
+                # skip OOV words
             if len(ids) < 2:
                 continue
-            ids = ids[-self.flags.max_seq_lengh:]
-            if len(ids) < self.flags.max_seq_lengh:
-                for _ in range(self.flags.max_seq_lengh - len(ids)):
+            ids = ids[-self.max_seq_lengh:]
+            if len(ids) < self.max_seq_lengh:
+                for _ in range(self.max_seq_lengh - len(ids)):
                     ids.append(0)
             features.append(ids[:-1])
             labels.append(ids[1:])
-        features = np.array(features)
-        labels = np.array(labels)
+        self.features = np.array(features)
+        self.labels = np.array(labels)
+        self.num_train_samples = len(self.features)
         tf.logging.info("**** Samples Info ****")
-        tf.logging.info(" samples num = %d", len(features))
+        tf.logging.info(" num train_samples = %d", self.num_train_samples)
 
+    def build_train_input_fn(self):
         return tf.estimator.inputs.numpy_input_fn(
-            x={'input_ids': features},
-            y=labels,
-            batch_size=self.flags.batch_size,
-            num_epochs=self.flags.epoch,
-            shuffle=True
-        )
+            x={'input_ids': self.features},
+            y=self.labels,
+            batch_size=self.batch_size,
+            num_epochs=self.epoch,
+            shuffle=self.shuffle)
