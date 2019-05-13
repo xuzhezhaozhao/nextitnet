@@ -142,7 +142,7 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
             loss = tf.losses.sparse_softmax_cross_entropy(
                 labels=tf.reshape(labels, [-1]),
                 logits=logits)
-            _, ids = tf.nn.top_k(logits, )
+            _, ids = tf.nn.top_k(logits, recall_k)
             metrics = create_metrics(labels, logits, ids, recall_k)
             output_spec = tf.estimator.EstimatorSpec(
                 mode=mode,

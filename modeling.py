@@ -30,8 +30,8 @@ class NextItemModel(object):
 
     def build_graph(self, training=True):
         self.embeddings = self.get_embeddings()
-        # TODO mask embedding_lookup?
-        inputs = tf.nn.embedding_lookup(self.embeddings, self.input_ids)
+        inputs = self.mask_padding_embedding_lookup(
+            self.embeddings, self.embedding_dim, self.input_ids)
         for layer_id, dilation in enumerate(self.dilations):
             inputs = self.residual_block(
                 inputs, dilation, layer_id, self.embedding_dim,
@@ -134,3 +134,18 @@ class NextItemModel(object):
                                            keep_dims=True)
             x = (x - mean) / tf.sqrt(variance + epsilon)
             return gamma * x + beta
+
+    def mask_padding_embedding_lookup(self, embeddings, embedding_dim, input):
+        """ mask padding tf.nn.embedding_lookup.
+
+        ref(@ay27): https://github.com/tensorflow/tensorflow/issues/2373
+        """
+
+        mask_padding_zero_op = tf.scatter_update(
+            embeddings, 0, tf.zeros([embedding_dim], dtype=tf.float32),
+            name="mask_padding_zero_op")
+        with tf.control_dependencies([mask_padding_zero_op]):
+            output = tf.nn.embedding_lookup(
+                embeddings, tf.cast(input, tf.int32, name="lookup_idx_cast"),
+                name="embedding_lookup")
+        return output

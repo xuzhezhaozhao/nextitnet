@@ -62,33 +62,26 @@ class InputData(object):
     def build_train_samples(self):
         features = []
         labels = []
-        input_masks = []
         for line in open(self.train_data_path):
             tokens = line.split()
             ids = []
-            mask = []
             for token in tokens:
                 if token.startswith('__label__'):
                     continue
                 if token in self.word_to_id:
                     ids.append(self.word_to_id[token])
-                    mask.append(1)
                 # skip OOV words
             if len(ids) < 2:
                 continue
             ids = ids[-self.max_seq_lengh:]
-            mask = mask[-self.max_seq_lengh:]
             if len(ids) < self.max_seq_lengh:
                 for _ in range(self.max_seq_lengh - len(ids)):
                     ids.append(0)
-                    mask.append(0)
             features.append(ids[:-1])
             labels.append(ids[1:])
-            input_masks.append(mask[1:])
 
         self.features = np.array(features)
         self.labels = np.array(labels)
-        self.input_masks = np.array(input_masks)
         self.num_train_samples = len(self.features)
 
     def build_eval_samples(self):
@@ -117,8 +110,7 @@ class InputData(object):
 
     def build_train_input_fn(self):
         return tf.estimator.inputs.numpy_input_fn(
-            x={'input_ids': self.features,
-               'input_masks': self.input_masks},
+            x={'input_ids': self.features},
             y=self.labels,
             batch_size=self.batch_size,
             num_epochs=self.epoch,
