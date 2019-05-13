@@ -8,7 +8,6 @@ from __future__ import print_function
 import os
 import tensorflow as tf
 import modeling
-import optimization
 import input_data
 
 
@@ -21,13 +20,14 @@ tf.app.flags.DEFINE_string('model_dir', 'model_dir', '')
 tf.app.flags.DEFINE_string('export_model_dir', 'export_model_dir', '')
 tf.app.flags.DEFINE_bool('do_train', False, '')
 tf.app.flags.DEFINE_bool('do_eval', False, '')
+tf.app.flags.DEFINE_bool('do_export', False, '')
 tf.app.flags.DEFINE_string('train_data_path', '', 'train data path')
 tf.app.flags.DEFINE_string('eval_data_path', '', 'eval data path')
 tf.app.flags.DEFINE_integer('batch_size', 64, 'batch size')
 tf.app.flags.DEFINE_integer('eval_batch_size', 64, 'eval batch size')
 tf.app.flags.DEFINE_integer('epoch', 5, '')
 tf.app.flags.DEFINE_integer('min_count', 5, '')
-tf.app.flags.DEFINE_integer('max_seq_lengh', 5, '')
+tf.app.flags.DEFINE_integer('max_seq_length', 5, '')
 tf.app.flags.DEFINE_integer('embedding_dim', 100, '')
 tf.app.flags.DEFINE_list('dilations', '1,2,4', '')
 tf.app.flags.DEFINE_integer('kernel_size', 3, '')
@@ -39,6 +39,7 @@ tf.app.flags.DEFINE_float(
     "Proportion of training to perform linear learning rate warmup for. "
     "E.g., 0.1 = 10% of training.")
 tf.app.flags.DEFINE_integer('recall_k', 20, '')
+tf.app.flags.DEFINE_integer('num_parallel_calls', 1, '')
 
 # log flags
 tf.app.flags.DEFINE_integer('save_summary_steps', 100, '')
@@ -128,6 +129,12 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                 partition_strategy="div")
             loss = tf.reduce_mean(loss)
             tf.summary.scalar('loss', loss)
+
+            if flags.num_gpu > 1:
+                import optimization_multi_gpu as optimization
+            else:
+                import optimization as optimization
+
             train_op = optimization.create_optimizer(
                 loss=loss,
                 init_lr=learning_rate,
@@ -210,14 +217,16 @@ def mrr_metric(labels,
 def main(_):
     tf.logging.set_verbosity(tf.logging.INFO)
     data = input_data.InputData(
-        flags.train_data_path,
-        flags.eval_data_path,
-        flags.min_count,
-        flags.max_seq_lengh,
-        flags.batch_size,
-        flags.eval_batch_size,
-        flags.epoch,
-        True)
+        train_data_path=flags.train_data_path,
+        eval_data_path=flags.eval_data_path,
+        min_count=flags.min_count,
+        max_seq_length=flags.max_seq_length,
+        batch_size=flags.batch_size,
+        eval_batch_size=flags.eval_batch_size,
+        epoch=flags.epoch,
+        shuffle=True,
+        num_parallel_calls=flags.num_parallel_calls
+    )
     num_train_steps = int(data.num_train_samples /
                           flags.batch_size * flags.epoch)
     num_warmup_steps = int(flags.warmup_proportion * num_train_steps)
@@ -229,12 +238,15 @@ def main(_):
         tf.logging.info("  Batch size = %d", flags.batch_size)
         tf.logging.info("  Num train steps = %d", num_train_steps)
         tf.logging.info("  Num warmup steps = %d", num_warmup_steps)
-        estimator.train(input_fn=data.build_train_input_fn())
+        # estimator.train(input_fn=data.build_numpy_train_input_fn())
+        estimator.train(input_fn=data.build_ds_train_input_fn())
     if flags.do_eval:
         tf.logging.info("***** Running evaluating *****")
-        tf.logging.info("  Num examples = %d", data.num_eval_samples)
         tf.logging.info("  Batch size = %d", flags.eval_batch_size)
-        estimator.evaluate(input_fn=data.build_eval_input_fn())
+        # estimator.evaluate(input_fn=data.build_numpy_eval_input_fn())
+        estimator.evaluate(input_fn=data.build_ds_eval_input_fn())
+    if flags.do_export:
+        tf.logging.info("***** Running exporting *****")
 
 
 if __name__ == '__main__':
