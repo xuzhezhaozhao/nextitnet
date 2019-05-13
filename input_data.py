@@ -138,6 +138,7 @@ class InputData(object):
             ds.prefetch(100)
             ds = ds.batch(self.eval_batch_size)
             return ds
+        return eval_input_fn
 
     def parse_line(self, line):
         tokens = line.split()
