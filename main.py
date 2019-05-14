@@ -49,7 +49,7 @@ tf.app.flags.DEFINE_integer('log_step_count_steps', 100, '')
 
 
 def build_estimator(
-        flags, num_classes, num_train_steps, num_warmup_steps, unigrams):
+        flags, num_classes, num_train_steps, num_warmup_steps, unigrams, keys):
     """Build estimator."""
 
     config_keys = {}
@@ -80,6 +80,7 @@ def build_estimator(
         num_warmup_steps,
         flags.recall_k,
         unigrams,
+        keys,
         flags.batch_size,
         flags.max_seq_length
     )
@@ -92,7 +93,7 @@ def build_estimator(
 def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                      num_sampled, learning_rate,
                      num_train_steps, num_warmup_steps, recall_k,
-                     unigrams, batch_size, max_seq_length):
+                     unigrams, keys, batch_size, max_seq_length):
     """Returns 'model_fn' closure for Estimator."""
 
     def model_fn(features, labels, mode):
@@ -125,7 +126,7 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
             valid_idx = tf.where(tf.not_equal(labels, 0))[:, 0]
 
             # labels = tf.nn.embedding_lookup(labels, valid_idx)
-            # output = tf.nn.embedding_lookup(model.output, valid_idx)
+            # output = tf.nn.embedding_lookup(model.output_2d, valid_idx)
             # loss = tf.nn.nce_loss(
                 # model.nce_weights,
                 # model.nce_biases,
@@ -139,7 +140,7 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                 model.nce_weights,
                 model.nce_biases,
                 labels,
-                model.output,
+                model.output_2d,
                 unigrams,
                 num_sampled,
                 num_classes,
@@ -169,7 +170,9 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
             labels = tf.reshape(labels, [-1, 1])
             valid_idx = tf.where(tf.not_equal(labels, 0))[:, 0]
             labels = tf.nn.embedding_lookup(labels, valid_idx)
-            logits = tf.nn.embedding_lookup(model.logits, valid_idx)
+            output = tf.nn.embedding_lookup(model.output_2d, valid_idx)
+            logits = tf.nn.xw_plus_b(
+                output, tf.transpose(model.nce_weights), model.nce_biases)
             loss = tf.losses.sparse_softmax_cross_entropy(
                 labels=tf.reshape(labels, [-1]),
                 logits=logits)
@@ -180,7 +183,26 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                 loss=loss,
                 eval_metric_ops=metrics)
         else:
-            pass
+            output = model.output_3d[:, -1:, :]   # sequence predict
+            output = tf.reshape(output, [-1, embedding_dim])
+            logits = tf.nn.xw_plus_b(
+                output, tf.transpose(model.nce_weights), model.nce_biases)
+            probs = tf.nn.softmax(logits)
+            scores, ids = tf.nn.top_k(logits, recall_k)
+            table = tf.contrib.lookup.index_to_string_table_from_tensor(
+                mapping=keys,
+                default_value='')
+            outputs = {
+                'scores': scores,
+                'keys': table.lookup(tf.cast(ids, tf.int64))
+            }
+            export_outputs = {
+                'recall': tf.estimator.export.PredictOutput(outputs=outputs),
+            }
+            output_spec = tf.estimator.EstimatorSpec(
+                mode,
+                predictions=outputs,
+                export_outputs=export_outputs)
         return output_spec
 
     return model_fn
@@ -200,44 +222,16 @@ def create_metrics(labels, logits, ids, recall_k):
             labels=labels, predictions_idx=ids[:, :recall_k2], k=recall_k2)
         recall_at_top_k4 = tf.metrics.recall_at_top_k(
             labels=labels, predictions_idx=ids[:, :recall_k4], k=recall_k4)
-        mrr_at_k = mrr_metric(labels, logits, recall_k)
-        mrr_at_k2 = mrr_metric(labels, logits, recall_k2)
-        mrr_at_k4 = mrr_metric(labels, logits, recall_k4)
 
         metrics = {
             'accuracy': accuracy,
             'recall_at_top_{}'.format(recall_k): recall_at_top_k,
             'recall_at_top_{}'.format(recall_k2): recall_at_top_k2,
-            'recall_at_top_{}'.format(recall_k4): recall_at_top_k4,
-            'mrr_at_{}'.format(recall_k): mrr_at_k,
-            'mrr_at_{}'.format(recall_k2): mrr_at_k2,
-            'mrr_at_{}'.format(recall_k4): mrr_at_k4
+            'recall_at_top_{}'.format(recall_k4): recall_at_top_k4
         }
         for key in metrics.keys():
             tf.summary.scalar(key, metrics[key][1])
     return metrics
-
-
-def mrr_metric(labels,
-               predictions,
-               k,
-               weights=None,
-               metrics_collections=None,
-               updates_collections=None,
-               name=None):
-    with tf.name_scope(name, 'mrr_metric', [predictions, labels, weights]):
-        _, r = tf.nn.top_k(predictions, k)
-        get_ranked_indicies = tf.expand_dims(tf.where(
-            tf.equal(tf.cast(r, tf.int64), labels))[:, 1], 1)
-        rr = 1.0 / (tf.to_float(get_ranked_indicies) + 1.0)
-
-        m_rr, update_mrr_op = tf.metrics.mean(rr, weights=weights, name=name)
-
-        if metrics_collections:
-            tf.add_to_collection(metrics_collections, m_rr)
-        if updates_collections:
-            tf.add_to_collections(updates_collections, update_mrr_op)
-        return m_rr, update_mrr_op
 
 
 def get_shape_list(tensor, expected_rank=None, name=None):
@@ -354,7 +348,8 @@ def main(_):
                           flags.batch_size * flags.epoch)
     num_warmup_steps = int(flags.warmup_proportion * num_train_steps)
     estimator = build_estimator(flags, data.vocabulary_size,
-                                num_train_steps, num_warmup_steps, data.freqs)
+                                num_train_steps, num_warmup_steps, data.freqs,
+                                data.id_to_word)
     if flags.do_train:
         tf.logging.info("***** Running training *****")
         tf.logging.info("  Num examples = %d", data.num_train_samples)
@@ -370,6 +365,9 @@ def main(_):
         estimator.evaluate(input_fn=data.build_ds_eval_input_fn())
     if flags.do_export:
         tf.logging.info("***** Running exporting *****")
+        estimator.export_savedmodel(
+            flags.export_model_dir,
+            serving_input_receiver_fn=data.build_serving_input_fn())
 
 
 if __name__ == '__main__':

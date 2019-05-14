@@ -36,12 +36,11 @@ class NextItemModel(object):
             inputs = self.residual_block(
                 inputs, dilation, layer_id, self.embedding_dim,
                 self.kernel_size, causal=True, training=training)
-        self.output = tf.reshape(inputs, [-1, self.embedding_dim])
-        tf.logging.info(" output = %s", self.output)
+        self.output_3d = inputs
+        self.output_2d = tf.reshape(inputs, [-1, self.embedding_dim])
+        tf.logging.info(" output_3d = %s", self.output_3d)
+        tf.logging.info(" output_2d = %s", self.output_2d)
         self.nce_weights, self.nce_biases = self.get_nce_weights_and_biases()
-        self.logits = tf.nn.xw_plus_b(
-            self.output, tf.transpose(self.nce_weights), self.nce_biases)
-        tf.logging.info(" logits = %s", self.logits)
 
     def get_embeddings(self):
         """Get embeddings variables."""

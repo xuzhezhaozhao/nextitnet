@@ -64,6 +64,7 @@ class InputData(object):
         self.vocabulary_size = len(self.id_to_word)
         tf.logging.info("**** Vocabulary Info ****")
         tf.logging.info(" vocabulary size = %d", self.vocabulary_size)
+        tf.logging.info(" key[1] = %s", self.id_to_word[1])
 
     def build_train_samples(self):
         features = []
@@ -161,3 +162,18 @@ class InputData(object):
             for _ in range(self.max_seq_length - len(ids)):
                 ids.insert(0, 0)
         return ids[:-1], ids[1:]
+
+    def build_serving_input_fn(self):
+        def serving_input_receiver_fn():
+            feature_spec = {
+                'input_ids': tf.FixedLenFeature(
+                    shape=[self.max_seq_length - 1], dtype=tf.int64)
+            }
+            serialized_tf_example = tf.placeholder(
+                dtype=tf.string, shape=[None])
+            receiver_tensors = {'examples': serialized_tf_example}
+            features = tf.parse_example(serialized_tf_example, feature_spec)
+            return tf.estimator.export.ServingInputReceiver(
+                features, receiver_tensors)
+
+        return serving_input_receiver_fn
