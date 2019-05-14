@@ -123,8 +123,10 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
         if mode == tf.estimator.ModeKeys.TRAIN:
             labels = tf.reshape(labels, [-1, 1])
             valid_idx = tf.where(tf.not_equal(labels, 0))[:, 0]
-            #output = tf.nn.embedding_lookup(model.output, valid_idx)
-            # loss = tf.nn.sampled_softmax_loss(
+
+            # labels = tf.nn.embedding_lookup(labels, valid_idx)
+            # output = tf.nn.embedding_lookup(model.output, valid_idx)
+            # loss = tf.nn.nce_loss(
                 # model.nce_weights,
                 # model.nce_biases,
                 # labels,
@@ -132,6 +134,7 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                 # num_sampled,
                 # num_classes,
                 # partition_strategy="div")
+
             loss = optimized_nce_loss(
                 model.nce_weights,
                 model.nce_biases,
