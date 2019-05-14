@@ -65,6 +65,15 @@ class InputData(object):
         tf.logging.info("**** Vocabulary Info ****")
         tf.logging.info(" vocabulary size = %d", self.vocabulary_size)
         tf.logging.info(" key[1] = %s", self.vocab[1])
+        tf.logging.info(" key[2] = %s", self.vocab[2])
+        tf.logging.info(" key[3] = %s", self.vocab[3])
+        tf.logging.info(" key[4] = %s", self.vocab[4])
+        tf.logging.info(" key[5] = %s", self.vocab[5])
+        tf.logging.info(" key[6] = %s", self.vocab[6])
+        tf.logging.info(" key[7] = %s", self.vocab[7])
+        tf.logging.info(" key[8] = %s", self.vocab[8])
+        tf.logging.info(" key[9] = %s", self.vocab[9])
+        tf.logging.info(" key[10] = %s", self.vocab[10])
 
     def build_train_samples(self):
         features = []
