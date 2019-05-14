@@ -22,9 +22,9 @@ python main.py \
   --do_export=true \
   --train_data_path='./test/train.txt' \
   --eval_data_path='./test/eval.txt' \
-  --batch_size=8 \
+  --batch_size=32 \
   --eval_batch_size=32 \
-  --epoch=10 \
+  --epoch=5 \
   --min_count=5 \
   --max_seq_length=200 \
   --embedding_dim=100 \

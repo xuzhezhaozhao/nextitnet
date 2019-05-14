@@ -48,7 +48,8 @@ tf.app.flags.DEFINE_integer('keep_checkpoint_max', 3, '')
 tf.app.flags.DEFINE_integer('log_step_count_steps', 100, '')
 
 
-def build_estimator(flags, num_classes, num_train_steps, num_warmup_steps):
+def build_estimator(
+        flags, num_classes, num_train_steps, num_warmup_steps, unigrams):
     """Build estimator."""
 
     config_keys = {}
@@ -77,7 +78,11 @@ def build_estimator(flags, num_classes, num_train_steps, num_warmup_steps):
         flags.learning_rate,
         num_train_steps,
         num_warmup_steps,
-        flags.recall_k)
+        flags.recall_k,
+        unigrams,
+        flags.batch_size,
+        flags.max_seq_length
+    )
     estimator_keys['config'] = config
     estimator = tf.estimator.Estimator(**estimator_keys)
 
@@ -86,7 +91,8 @@ def build_estimator(flags, num_classes, num_train_steps, num_warmup_steps):
 
 def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                      num_sampled, learning_rate,
-                     num_train_steps, num_warmup_steps, recall_k):
+                     num_train_steps, num_warmup_steps, recall_k,
+                     unigrams, batch_size, max_seq_length):
     """Returns 'model_fn' closure for Estimator."""
 
     def model_fn(features, labels, mode):
@@ -114,19 +120,31 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
             tf.logging.info(" name = %s, shape = %s", var.name, var.shape)
 
         output_spec = None
-        labels = tf.reshape(labels, [-1, 1])
-        valid_idx = tf.where(tf.not_equal(labels, 0))[:, 0]
-        labels = tf.nn.embedding_lookup(labels, valid_idx)
         if mode == tf.estimator.ModeKeys.TRAIN:
-            output = tf.nn.embedding_lookup(model.output, valid_idx)
-            loss = tf.nn.sampled_softmax_loss(
+            labels = tf.reshape(labels, [-1, 1])
+            valid_idx = tf.where(tf.not_equal(labels, 0))[:, 0]
+            #output = tf.nn.embedding_lookup(model.output, valid_idx)
+            # loss = tf.nn.sampled_softmax_loss(
+                # model.nce_weights,
+                # model.nce_biases,
+                # labels,
+                # output,
+                # num_sampled,
+                # num_classes,
+                # partition_strategy="div")
+            loss = optimized_nce_loss(
                 model.nce_weights,
                 model.nce_biases,
                 labels,
-                output,
+                model.output,
+                unigrams,
                 num_sampled,
                 num_classes,
-                partition_strategy="div")
+                embedding_dim,
+                valid_idx,
+                batch_size,
+                max_seq_length
+            )
             loss = tf.reduce_mean(loss)
             tf.summary.scalar('loss', loss)
 
@@ -145,6 +163,9 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                 loss=loss,
                 train_op=train_op)
         elif mode == tf.estimator.ModeKeys.EVAL:
+            labels = tf.reshape(labels, [-1, 1])
+            valid_idx = tf.where(tf.not_equal(labels, 0))[:, 0]
+            labels = tf.nn.embedding_lookup(labels, valid_idx)
             logits = tf.nn.embedding_lookup(model.logits, valid_idx)
             loss = tf.losses.sparse_softmax_cross_entropy(
                 labels=tf.reshape(labels, [-1]),
@@ -206,12 +227,111 @@ def mrr_metric(labels,
         get_ranked_indicies = tf.expand_dims(tf.where(
             tf.equal(tf.cast(r, tf.int64), labels))[:, 1], 1)
         rr = 1.0 / (tf.to_float(get_ranked_indicies) + 1.0)
+
         m_rr, update_mrr_op = tf.metrics.mean(rr, weights=weights, name=name)
+
         if metrics_collections:
             tf.add_to_collection(metrics_collections, m_rr)
         if updates_collections:
             tf.add_to_collections(updates_collections, update_mrr_op)
         return m_rr, update_mrr_op
+
+
+def get_shape_list(tensor, expected_rank=None, name=None):
+    """Returns a list of the shape of tensor, preferring static dimensions.
+
+    Args:
+      tensor: A tf.Tensor object to find the shape of.
+      expected_rank: (optional) int. The expected rank of `tensor`. If this is
+        specified and the `tensor` has a different rank, and exception will be
+        thrown.
+      name: Optional name of the tensor for the error message.
+
+    Returns:
+      A list of dimensions of the shape of tensor. All static dimensions will
+      be returned as python integers, and dynamic dimensions will be returned
+      as tf.Tensor scalars.
+    """
+    if name is None:
+        name = tensor.name
+
+    if expected_rank is not None:
+        assert_rank(tensor, expected_rank, name)
+
+    shape = tensor.shape.as_list()
+
+    non_static_indexes = []
+    for (index, dim) in enumerate(shape):
+        if dim is None:
+            non_static_indexes.append(index)
+
+    if not non_static_indexes:
+        return shape
+
+    # 通过 tf.shape 获取 dynamic shape
+    dyn_shape = tf.shape(tensor)
+    for index in non_static_indexes:
+        shape[index] = dyn_shape[index]
+    return shape
+
+
+def optimized_nce_loss(weights, biases, labels, inputs, unigrams, num_sampled,
+                       num_classes, nce_dim, valid_idx, batch_size,
+                       max_seq_length):
+
+    batch_size = batch_size * (max_seq_length - 1)
+
+    # [batch, num_sampled]
+    sampled_ids, _, _ = tf.nn.fixed_unigram_candidate_sampler(
+        true_classes=labels,
+        num_true=1,
+        num_sampled=num_sampled * batch_size,
+        unique=False,
+        range_max=num_classes,
+        distortion=1.0,
+        num_reserved_ids=0,
+        num_shards=1,
+        shard=0,
+        unigrams=unigrams,
+        seed=None,
+        name=None
+    )
+    sampled_ids = tf.reshape(sampled_ids, [batch_size, num_sampled])
+
+    # Weights for labels: [batch_size, emb_dim]
+    true_w = tf.nn.embedding_lookup(weights, tf.reshape(labels, [-1]))
+    # Biases for labels: [batch_size, emb_dim]
+    true_b = tf.nn.embedding_lookup(biases, tf.reshape(labels, [-1]))
+
+    # Weights for sampled ids: [batch, num_sampled, emb_dim]
+    sampled_w = tf.nn.embedding_lookup(weights, sampled_ids)
+    # Biases for sampled ids: [batch, num_sampled, 1]
+    sampled_b = tf.nn.embedding_lookup(biases, sampled_ids)
+
+    # True logits: [batch_size, 1]
+    true_logits = tf.reduce_sum(tf.multiply(inputs, true_w), 1) + true_b
+
+    # Sampled logits: [batch_size, num_sampled]
+    sampled_b_vec = tf.reshape(sampled_b, [-1, num_sampled])
+    broadcast_inputs = tf.reshape(inputs, [-1, 1, nce_dim])
+    sampled_logits = tf.multiply(broadcast_inputs, sampled_w)
+    sampled_logits = tf.reduce_sum(sampled_logits, -1) + sampled_b_vec
+
+    # cross-entropy(logits, labels)
+    true_xent = tf.nn.sigmoid_cross_entropy_with_logits(
+        labels=tf.ones_like(true_logits), logits=true_logits)
+    sampled_xent = tf.nn.sigmoid_cross_entropy_with_logits(
+        labels=tf.zeros_like(sampled_logits), logits=sampled_logits)
+
+    # loss mask
+    true_xent = tf.nn.embedding_lookup(true_xent, valid_idx)
+    sampled_xent = tf.nn.embedding_lookup(sampled_xent, valid_idx)
+
+    # NCE-loss is the sum of the true and noise (sampled words)
+    # contributions, averaged over the batch.
+    nce_loss_tensor = (tf.reduce_sum(true_xent) +
+                       tf.reduce_sum(sampled_xent)) / batch_size
+    return nce_loss_tensor
 
 
 def main(_):
@@ -231,7 +351,7 @@ def main(_):
                           flags.batch_size * flags.epoch)
     num_warmup_steps = int(flags.warmup_proportion * num_train_steps)
     estimator = build_estimator(flags, data.vocabulary_size,
-                                num_train_steps, num_warmup_steps)
+                                num_train_steps, num_warmup_steps, data.freqs)
     if flags.do_train:
         tf.logging.info("***** Running training *****")
         tf.logging.info("  Num examples = %d", data.num_train_samples)

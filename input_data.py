@@ -52,12 +52,14 @@ class InputData(object):
 
         self.word_to_id = {}
         self.id_to_word = [""]  # one padding
+        self.freqs = [0]
         idx = 1
         for key, cnt in counter.most_common():
             if cnt < min_count:
                 continue
             self.word_to_id[key] = idx
             self.id_to_word.append(key)
+            self.freqs.append(cnt)
             idx += 1
         self.vocabulary_size = len(self.id_to_word)
         tf.logging.info("**** Vocabulary Info ****")
@@ -157,5 +159,5 @@ class InputData(object):
         ids = ids[-self.max_seq_length:]
         if len(ids) < self.max_seq_length:
             for _ in range(self.max_seq_length - len(ids)):
-                ids.append(0)
+                ids.insert(0, 0)
         return ids[:-1], ids[1:]
