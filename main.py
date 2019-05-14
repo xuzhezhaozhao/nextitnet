@@ -188,16 +188,16 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
             logits = tf.nn.xw_plus_b(
                 output, tf.transpose(model.nce_weights), model.nce_biases)
             probs = tf.nn.softmax(logits)
-            scores, ids = tf.nn.top_k(logits, recall_k)
+            scores, ids = tf.nn.top_k(probs, recall_k)
             table = tf.contrib.lookup.index_to_string_table_from_tensor(
                 mapping=keys,
                 default_value='')
             outputs = {
                 'scores': scores,
-                'keys': table.lookup(tf.cast(ids, tf.int64))
+                'keys': table.lookup(tf.cast(ids, tf.int64)),
             }
             export_outputs = {
-                'recall': tf.estimator.export.PredictOutput(outputs=outputs),
+                'predicts': tf.estimator.export.PredictOutput(outputs=outputs),
             }
             output_spec = tf.estimator.EstimatorSpec(
                 mode,
@@ -349,7 +349,7 @@ def main(_):
     num_warmup_steps = int(flags.warmup_proportion * num_train_steps)
     estimator = build_estimator(flags, data.vocabulary_size,
                                 num_train_steps, num_warmup_steps, data.freqs,
-                                data.id_to_word)
+                                data.vocab)
     if flags.do_train:
         tf.logging.info("***** Running training *****")
         tf.logging.info("  Num examples = %d", data.num_train_samples)

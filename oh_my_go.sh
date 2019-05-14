@@ -17,8 +17,8 @@ fi
 python main.py \
   --model_dir=${model_dir} \
   --export_model_dir=${export_model_dir} \
-  --do_train=false \
-  --do_eval=false \
+  --do_train=true \
+  --do_eval=true \
   --do_export=true \
   --train_data_path='./data/mtrain.txt' \
   --eval_data_path='./data/meval.txt' \

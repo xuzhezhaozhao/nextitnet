@@ -51,20 +51,20 @@ class InputData(object):
         self.num_train_samples = cnt
 
         self.word_to_id = {}
-        self.id_to_word = [""]  # one padding
+        self.vocab = [""]  # one padding
         self.freqs = [0]
         idx = 1
         for key, cnt in counter.most_common():
             if cnt < min_count:
                 continue
             self.word_to_id[key] = idx
-            self.id_to_word.append(key)
+            self.vocab.append(key)
             self.freqs.append(cnt)
             idx += 1
-        self.vocabulary_size = len(self.id_to_word)
+        self.vocabulary_size = len(self.vocab)
         tf.logging.info("**** Vocabulary Info ****")
         tf.logging.info(" vocabulary size = %d", self.vocabulary_size)
-        tf.logging.info(" key[1] = %s", self.id_to_word[1])
+        tf.logging.info(" key[1] = %s", self.vocab[1])
 
     def build_train_samples(self):
         features = []
