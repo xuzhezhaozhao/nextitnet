@@ -125,17 +125,6 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
             labels = tf.reshape(labels, [-1, 1])
             valid_idx = tf.where(tf.not_equal(labels, 0))[:, 0]
 
-            # labels = tf.nn.embedding_lookup(labels, valid_idx)
-            # output = tf.nn.embedding_lookup(model.output_2d, valid_idx)
-            # loss = tf.nn.nce_loss(
-                # model.nce_weights,
-                # model.nce_biases,
-                # labels,
-                # output,
-                # num_sampled,
-                # num_classes,
-                # partition_strategy="div")
-
             loss = optimized_nce_loss(
                 model.nce_weights,
                 model.nce_biases,
@@ -234,44 +223,6 @@ def create_metrics(labels, logits, ids, recall_k):
     return metrics
 
 
-def get_shape_list(tensor, expected_rank=None, name=None):
-    """Returns a list of the shape of tensor, preferring static dimensions.
-
-    Args:
-      tensor: A tf.Tensor object to find the shape of.
-      expected_rank: (optional) int. The expected rank of `tensor`. If this is
-        specified and the `tensor` has a different rank, and exception will be
-        thrown.
-      name: Optional name of the tensor for the error message.
-
-    Returns:
-      A list of dimensions of the shape of tensor. All static dimensions will
-      be returned as python integers, and dynamic dimensions will be returned
-      as tf.Tensor scalars.
-    """
-    if name is None:
-        name = tensor.name
-
-    if expected_rank is not None:
-        assert_rank(tensor, expected_rank, name)
-
-    shape = tensor.shape.as_list()
-
-    non_static_indexes = []
-    for (index, dim) in enumerate(shape):
-        if dim is None:
-            non_static_indexes.append(index)
-
-    if not non_static_indexes:
-        return shape
-
-    # 通过 tf.shape 获取 dynamic shape
-    dyn_shape = tf.shape(tensor)
-    for index in non_static_indexes:
-        shape[index] = dyn_shape[index]
-    return shape
-
-
 def optimized_nce_loss(weights, biases, labels, inputs, unigrams, num_sampled,
                        num_classes, nce_dim, valid_idx, batch_size,
                        max_seq_length):
@@ -336,6 +287,7 @@ def main(_):
     data = input_data.InputData(
         train_data_path=flags.train_data_path,
         eval_data_path=flags.eval_data_path,
+        model_dir=flags.model_dir,
         min_count=flags.min_count,
         max_seq_length=flags.max_seq_length,
         batch_size=flags.batch_size,
@@ -365,9 +317,12 @@ def main(_):
         estimator.evaluate(input_fn=data.build_ds_eval_input_fn())
     if flags.do_export:
         tf.logging.info("***** Running exporting *****")
+        assets_extra = {}
+        assets_extra['keys.dict'] = data.keys_path
         estimator.export_savedmodel(
             flags.export_model_dir,
-            serving_input_receiver_fn=data.build_serving_input_fn())
+            serving_input_receiver_fn=data.build_serving_input_fn(),
+            assets_extra=assets_extra)
 
 
 if __name__ == '__main__':

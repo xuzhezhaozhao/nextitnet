@@ -36,7 +36,7 @@ def run():
     example1 = tf.train.Example(
         features=tf.train.Features(
             feature={
-                'input_ids': _int64_feature([3]*199),
+                'input_ids': _int64_feature([2620]*199),
             }
         )
     ).SerializeToString()

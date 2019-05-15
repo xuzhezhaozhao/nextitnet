@@ -7,6 +7,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 import numpy as np
+import os
 from collections import Counter
 
 
@@ -16,6 +17,7 @@ class InputData(object):
             self,
             train_data_path,
             eval_data_path,
+            model_dir,
             min_count,
             max_seq_length,
             batch_size,
@@ -26,6 +28,7 @@ class InputData(object):
     ):
         self.train_data_path = train_data_path
         self.eval_data_path = eval_data_path
+        self.model_dir = model_dir
         self.min_count = min_count
         self.max_seq_length = max_seq_length
         self.batch_size = batch_size
@@ -33,6 +36,8 @@ class InputData(object):
         self.epoch = epoch
         self.shuffle = shuffle
         self.num_parallel_calls = num_parallel_calls
+
+        self.keys_path = os.path.join(self.model_dir, 'keys.dict')
 
         self.build_vocabulary()
 
@@ -74,6 +79,13 @@ class InputData(object):
         tf.logging.info(" key[8] = %s", self.vocab[8])
         tf.logging.info(" key[9] = %s", self.vocab[9])
         tf.logging.info(" key[10] = %s", self.vocab[10])
+
+        # write vocabulary to file
+        with open(self.keys_path, 'w') as f:
+            for key, cnt in zip(self.vocab, self.freqs):
+                if key == "":
+                    continue
+                f.write(key + ' ' + str(cnt) + '\n')
 
     def build_train_samples(self):
         features = []
