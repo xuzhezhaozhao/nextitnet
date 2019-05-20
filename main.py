@@ -7,6 +7,7 @@ from __future__ import print_function
 
 import os
 import tensorflow as tf
+import numpy as np
 import modeling
 import input_data
 
@@ -82,7 +83,8 @@ def build_estimator(
         unigrams,
         keys,
         flags.batch_size,
-        flags.max_seq_length
+        flags.max_seq_length,
+        flags.model_dir
     )
     estimator_keys['config'] = config
     estimator = tf.estimator.Estimator(**estimator_keys)
@@ -93,7 +95,7 @@ def build_estimator(
 def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                      num_sampled, learning_rate,
                      num_train_steps, num_warmup_steps, recall_k,
-                     unigrams, keys, batch_size, max_seq_length):
+                     unigrams, keys, batch_size, max_seq_length, model_dir):
     """Returns 'model_fn' closure for Estimator."""
 
     def model_fn(features, labels, mode):
@@ -174,8 +176,14 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
         else:
             output = model.output_3d[:, -1:, :]   # sequence predict
             output = tf.reshape(output, [-1, embedding_dim])
+            nce_weights = np.load(os.path.join(model_dir, 'nce_weights.npy'))
+            nce_biases = np.load(os.path.join(model_dir, 'nce_biases.npy'))
+            nce_weights_transpose = tf.convert_to_tensor(
+                nce_weights.transpose(), dtype=tf.float32)
+            nce_biases_transpose = tf.convert_to_tensor(
+                nce_biases.transpose(), dtype=tf.float32)
             logits = tf.nn.xw_plus_b(
-                output, tf.transpose(model.nce_weights), model.nce_biases)
+                output, nce_weights_transpose, nce_biases_transpose)
             probs = tf.nn.softmax(logits)
             scores, ids = tf.nn.top_k(probs, recall_k)
             table = tf.contrib.lookup.index_to_string_table_from_tensor(
@@ -310,6 +318,12 @@ def main(_):
         tf.logging.info("  Num warmup steps = %d", num_warmup_steps)
         # estimator.train(input_fn=data.build_numpy_train_input_fn())
         estimator.train(input_fn=data.build_ds_train_input_fn())
+        nce_weights = estimator.get_variable_value(
+            'nce_layer_variables/nce_weights:0')
+        nce_biases = estimator.get_variable_value(
+            'nce_layer_variables/nce_biases:0')
+        np.save(os.path.join(flags.model_dir, 'nce_weights.npy'), nce_weights)
+        np.save(os.path.join(flags.model_dir, 'nce_biases.npy'), nce_biases)
     if flags.do_eval:
         tf.logging.info("***** Running evaluating *****")
         tf.logging.info("  Batch size = %d", flags.eval_batch_size)
