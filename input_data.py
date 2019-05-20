@@ -208,7 +208,7 @@ class InputData(object):
             feature_spec = {
                 'inputs': tf.FixedLenFeature(
                     shape=[self.max_seq_length - 1], dtype=tf.string),
-                'to_rank_inputs': tf.VarLenFeature(dtype=tf.string)
+                'to_ranking_inputs': tf.VarLenFeature(dtype=tf.string)
             }
             serialized_tf_example = tf.placeholder(
                 dtype=tf.string, shape=[None])
@@ -218,8 +218,8 @@ class InputData(object):
                 mapping=self.vocab,
                 default_value=0)
             features['input_ids'] = table.lookup(features['inputs'])
-            features['to_rank_input_ids'] = table.lookup(
-                tf.sparse.to_dense(features['to_rank_inputs'],
+            features['to_ranking_input_ids'] = table.lookup(
+                tf.sparse.to_dense(features['to_ranking_inputs'],
                                    default_value=''))
             return tf.estimator.export.ServingInputReceiver(
                 features, receiver_tensors)

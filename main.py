@@ -185,21 +185,37 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                 nce_biases.transpose(), dtype=tf.float32)
             logits = tf.nn.xw_plus_b(
                 output, nce_weights_transpose, nce_biases_transpose)
-            probs = tf.nn.softmax(logits)
-            scores, ids = tf.nn.top_k(probs, recall_k)
+            scores, ids = tf.nn.top_k(logits, recall_k)
             table = tf.contrib.lookup.index_to_string_table_from_tensor(
                 mapping=keys,
                 default_value='')
-            outputs = {
+            recall_outputs = {
                 'scores': scores,
                 'keys': table.lookup(tf.cast(ids, tf.int64)),
             }
+            # ranking
+            to_ranking_input_ids = features['to_ranking_input_ids']
+            to_ranking_input_ids = tf.reshape(to_ranking_input_ids, [-1])
+            ranking_weights = tf.nn.embedding_lookup(
+                model.nce_weights, to_ranking_input_ids)
+            ranking_biases = tf.nn.embedding_lookup(
+                model.nce_biases, to_ranking_input_ids)
+            ranking_scores = tf.nn.xw_plus_b(
+                output, tf.transpose(ranking_weights), ranking_biases)
+            ranking_outputs = {
+                'ranking_scores': ranking_scores,
+            }
             export_outputs = {
-                'predicts': tf.estimator.export.PredictOutput(outputs=outputs),
+                'serving_default': tf.estimator.export.PredictOutput(
+                    outputs=recall_outputs),
+                'recall': tf.estimator.export.PredictOutput(
+                    outputs=recall_outputs),
+                'ranking': tf.estimator.export.PredictOutput(
+                    outputs=ranking_outputs),
             }
             output_spec = tf.estimator.EstimatorSpec(
                 mode,
-                predictions=outputs,
+                predictions=recall_outputs,
                 export_outputs=export_outputs)
         return output_spec
 
