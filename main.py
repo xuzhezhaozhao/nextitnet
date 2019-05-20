@@ -204,6 +204,7 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                 output, tf.transpose(ranking_weights), ranking_biases)
             ranking_outputs = {
                 'ranking_scores': ranking_scores,
+                'keys': features['to_ranking_inputs']
             }
             export_outputs = {
                 'serving_default': tf.estimator.export.PredictOutput(

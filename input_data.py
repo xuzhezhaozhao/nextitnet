@@ -218,9 +218,11 @@ class InputData(object):
                 mapping=self.vocab,
                 default_value=0)
             features['input_ids'] = table.lookup(features['inputs'])
+            features['to_ranking_inputs'] = tf.sparse.to_dense(
+                features['to_ranking_inputs'], default_value='')
             features['to_ranking_input_ids'] = table.lookup(
-                tf.sparse.to_dense(features['to_ranking_inputs'],
-                                   default_value=''))
+                features['to_ranking_inputs']
+            )
             return tf.estimator.export.ServingInputReceiver(
                 features, receiver_tensors)
 
