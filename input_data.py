@@ -187,13 +187,17 @@ class InputData(object):
     def build_serving_input_fn(self):
         def serving_input_receiver_fn():
             feature_spec = {
-                'input_ids': tf.FixedLenFeature(
-                    shape=[self.max_seq_length - 1], dtype=tf.int64)
+                'inputs': tf.FixedLenFeature(
+                    shape=[self.max_seq_length - 1], dtype=tf.string)
             }
             serialized_tf_example = tf.placeholder(
                 dtype=tf.string, shape=[None])
             receiver_tensors = {'examples': serialized_tf_example}
             features = tf.parse_example(serialized_tf_example, feature_spec)
+            table = tf.contrib.lookup.index_table_from_tensor(
+                mapping=self.vocab,
+                default_value=0)
+            features['input_ids'] = table.lookup(features['inputs'])
             return tf.estimator.export.ServingInputReceiver(
                 features, receiver_tensors)
 
