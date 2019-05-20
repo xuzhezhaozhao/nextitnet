@@ -22,6 +22,7 @@ tf.app.flags.DEFINE_string('export_model_dir', 'export_model_dir', '')
 tf.app.flags.DEFINE_bool('do_train', False, '')
 tf.app.flags.DEFINE_bool('do_eval', False, '')
 tf.app.flags.DEFINE_bool('do_export', False, '')
+tf.app.flags.DEFINE_string('export_mode', 'recall', 'recall or ranking')
 tf.app.flags.DEFINE_string('train_data_path', '', 'train data path')
 tf.app.flags.DEFINE_string('eval_data_path', '', 'eval data path')
 tf.app.flags.DEFINE_integer('batch_size', 64, 'batch size')
@@ -333,10 +334,19 @@ def main(_):
         tf.logging.info("***** Running exporting *****")
         assets_extra = {}
         assets_extra['keys.dict'] = data.keys_path
-        estimator.export_savedmodel(
-            flags.export_model_dir,
-            serving_input_receiver_fn=data.build_serving_input_fn(),
-            assets_extra=assets_extra)
+
+        if flags.export_mode == 'recall':
+            estimator.export_savedmodel(
+                flags.export_model_dir,
+                serving_input_receiver_fn=data.build_recall_serving_input_fn(),
+                assets_extra=assets_extra)
+        elif flags.export_mode == 'ranking':
+            estimator.export_savedmodel(
+                flags.export_model_dir,
+                serving_input_receiver_fn=data.build_ranking_serving_input_fn(),
+                assets_extra=assets_extra)
+        else:
+            raise ValueError("Unknow export mode.")
 
 
 if __name__ == '__main__':

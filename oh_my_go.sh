@@ -21,6 +21,7 @@ python main.py \
   --do_train=false \
   --do_eval=false \
   --do_export=true \
+  --export_mode='ranking' \
   --train_data_path='./data/mtrain.txt' \
   --eval_data_path='./data/meval.txt' \
   --batch_size=32 \

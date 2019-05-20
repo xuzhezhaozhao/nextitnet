@@ -184,7 +184,7 @@ class InputData(object):
                 ids.insert(0, 0)
         return ids[:-1], ids[1:]
 
-    def build_serving_input_fn(self):
+    def build_recall_serving_input_fn(self):
         def serving_input_receiver_fn():
             feature_spec = {
                 'inputs': tf.FixedLenFeature(
@@ -198,6 +198,29 @@ class InputData(object):
                 mapping=self.vocab,
                 default_value=0)
             features['input_ids'] = table.lookup(features['inputs'])
+            return tf.estimator.export.ServingInputReceiver(
+                features, receiver_tensors)
+
+        return serving_input_receiver_fn
+
+    def build_ranking_serving_input_fn(self):
+        def serving_input_receiver_fn():
+            feature_spec = {
+                'inputs': tf.FixedLenFeature(
+                    shape=[self.max_seq_length - 1], dtype=tf.string),
+                'to_rank_inputs': tf.VarLenFeature(dtype=tf.string)
+            }
+            serialized_tf_example = tf.placeholder(
+                dtype=tf.string, shape=[None])
+            receiver_tensors = {'examples': serialized_tf_example}
+            features = tf.parse_example(serialized_tf_example, feature_spec)
+            table = tf.contrib.lookup.index_table_from_tensor(
+                mapping=self.vocab,
+                default_value=0)
+            features['input_ids'] = table.lookup(features['inputs'])
+            features['to_rank_input_ids'] = table.lookup(
+                tf.sparse.to_dense(features['to_rank_inputs'],
+                                   default_value=''))
             return tf.estimator.export.ServingInputReceiver(
                 features, receiver_tensors)
 

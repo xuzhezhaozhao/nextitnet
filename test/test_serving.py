@@ -33,10 +33,16 @@ def run():
 
     request.model_spec.signature_name = 'serving_default'
     input_name = 'examples'
+    inputs = ['6785ccac698472bk']
+
+    for _ in range(199-len(inputs)):
+        inputs.insert(0, '')
+
     example1 = tf.train.Example(
         features=tf.train.Features(
             feature={
-                'inputs': _bytes_feature(['6785ccac698472bk']*199),
+                'inputs': _bytes_feature(inputs),
+                'to_rank_inputs': _bytes_feature(inputs)
             }
         )
     ).SerializeToString()
