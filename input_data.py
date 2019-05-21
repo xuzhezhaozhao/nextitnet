@@ -42,12 +42,15 @@ class InputData(object):
         self.build_vocabulary()
 
     def build_vocabulary(self):
+        tf.logging.info("Build vocabulary ...")
         data_path = self.train_data_path
         min_count = self.min_count
         counter = Counter()
         cnt = 0
         for line in open(data_path):
             cnt += 1
+            if cnt % 200000 == 0:
+                tf.logging.info("Process {} lines ...".format(cnt))
             tokens = line.split()
             for token in tokens:
                 if token.startswith('__label__'):
