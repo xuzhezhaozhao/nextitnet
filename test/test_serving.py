@@ -31,11 +31,9 @@ def run():
     request = predict_pb2.PredictRequest()
     request.model_spec.name = MODEL_NAME
 
-    request.model_spec.signature_name = 'ranking'
+    request.model_spec.signature_name = 'recall'
     input_name = 'examples'
     inputs = ['4395cbace39695aw']
-    for _ in range(199-len(inputs)):
-        inputs.insert(0, '')
     to_ranking_inputs = ['8395cc37ce8658bk', '', '6565cbd3193976aw', '2235cbe9d7a891ah']
     example1 = tf.train.Example(
         features=tf.train.Features(

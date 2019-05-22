@@ -22,7 +22,6 @@ tf.app.flags.DEFINE_string('export_model_dir', 'export_model_dir', '')
 tf.app.flags.DEFINE_bool('do_train', False, '')
 tf.app.flags.DEFINE_bool('do_eval', False, '')
 tf.app.flags.DEFINE_bool('do_export', False, '')
-tf.app.flags.DEFINE_string('export_mode', 'recall', 'recall or ranking')
 tf.app.flags.DEFINE_string('train_data_path', '', 'train data path')
 tf.app.flags.DEFINE_string('eval_data_path', '', 'eval data path')
 tf.app.flags.DEFINE_integer('batch_size', 64, 'batch size')
@@ -193,6 +192,7 @@ def model_fn_builder(num_classes, embedding_dim, dilations, kernel_size,
                 'scores': scores,
                 'keys': table.lookup(tf.cast(ids, tf.int64)),
             }
+
             # ranking
             to_ranking_input_ids = features['to_ranking_input_ids']
             to_ranking_input_ids = tf.reshape(to_ranking_input_ids, [-1])
@@ -336,12 +336,6 @@ def main(_):
         tf.logging.info("  Num warmup steps = %d", num_warmup_steps)
         # estimator.train(input_fn=data.build_numpy_train_input_fn())
         estimator.train(input_fn=data.build_ds_train_input_fn())
-        nce_weights = estimator.get_variable_value(
-            'nce_layer_variables/nce_weights:0')
-        nce_biases = estimator.get_variable_value(
-            'nce_layer_variables/nce_biases:0')
-        np.save(os.path.join(flags.model_dir, 'nce_weights.npy'), nce_weights)
-        np.save(os.path.join(flags.model_dir, 'nce_biases.npy'), nce_biases)
     if flags.do_eval:
         tf.logging.info("***** Running evaluating *****")
         tf.logging.info("  Batch size = %d", flags.eval_batch_size)
@@ -349,21 +343,19 @@ def main(_):
         estimator.evaluate(input_fn=data.build_ds_eval_input_fn())
     if flags.do_export:
         tf.logging.info("***** Running exporting *****")
+        nce_weights = estimator.get_variable_value(
+            'nce_layer_variables/nce_weights:0')
+        nce_biases = estimator.get_variable_value(
+            'nce_layer_variables/nce_biases:0')
+        np.save(os.path.join(flags.model_dir, 'nce_weights.npy'), nce_weights)
+        np.save(os.path.join(flags.model_dir, 'nce_biases.npy'), nce_biases)
+
         assets_extra = {}
         assets_extra['keys.dict'] = data.keys_path
-
-        if flags.export_mode == 'recall':
-            estimator.export_savedmodel(
-                flags.export_model_dir,
-                serving_input_receiver_fn=data.build_recall_serving_input_fn(),
-                assets_extra=assets_extra)
-        elif flags.export_mode == 'ranking':
-            estimator.export_savedmodel(
-                flags.export_model_dir,
-                serving_input_receiver_fn=data.build_ranking_serving_input_fn(),
-                assets_extra=assets_extra)
-        else:
-            raise ValueError("Unknow export mode.")
+        estimator.export_savedmodel(
+            flags.export_model_dir,
+            serving_input_receiver_fn=data.build_serving_input_fn(),
+            assets_extra=assets_extra)
 
 
 if __name__ == '__main__':

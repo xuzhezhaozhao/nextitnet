@@ -6,7 +6,7 @@ cd $( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 model_dir=`pwd`/model_dir
 export_model_dir=`pwd`/export_model_dir
 
-remove_model_dir=0
+remove_model_dir=1
 if [[ ${remove_model_dir} == '1' ]]; then
     rm -rf ${model_dir}.bak
     if [[ -d ${model_dir} ]]; then
@@ -18,17 +18,16 @@ mkdir -p ${model_dir}
 python main.py \
   --model_dir=${model_dir} \
   --export_model_dir=${export_model_dir} \
-  --do_train=false \
-  --do_eval=false \
+  --do_train=true \
+  --do_eval=true \
   --do_export=true \
-  --export_mode='ranking' \
   --train_data_path='./data/mtrain.txt' \
   --eval_data_path='./data/meval.txt' \
   --batch_size=32 \
   --eval_batch_size=32 \
   --epoch=1 \
-  --min_count=30 \
-  --max_seq_length=200 \
+  --min_count=50 \
+  --max_seq_length=50 \
   --embedding_dim=100 \
   --dilations='1,2' \
   --kernel_size=3 \

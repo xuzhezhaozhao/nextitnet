@@ -187,30 +187,10 @@ class InputData(object):
                 ids.insert(0, 0)
         return ids[:-1], ids[1:]
 
-    def build_recall_serving_input_fn(self):
+    def build_serving_input_fn(self):
         def serving_input_receiver_fn():
             feature_spec = {
-                'inputs': tf.FixedLenFeature(
-                    shape=[self.max_seq_length - 1], dtype=tf.string)
-            }
-            serialized_tf_example = tf.placeholder(
-                dtype=tf.string, shape=[None])
-            receiver_tensors = {'examples': serialized_tf_example}
-            features = tf.parse_example(serialized_tf_example, feature_spec)
-            table = tf.contrib.lookup.index_table_from_tensor(
-                mapping=self.vocab,
-                default_value=0)
-            features['input_ids'] = table.lookup(features['inputs'])
-            return tf.estimator.export.ServingInputReceiver(
-                features, receiver_tensors)
-
-        return serving_input_receiver_fn
-
-    def build_ranking_serving_input_fn(self):
-        def serving_input_receiver_fn():
-            feature_spec = {
-                'inputs': tf.FixedLenFeature(
-                    shape=[self.max_seq_length - 1], dtype=tf.string),
+                'inputs': tf.VarLenFeature(dtype=tf.string),
                 'to_ranking_inputs': tf.VarLenFeature(dtype=tf.string)
             }
             serialized_tf_example = tf.placeholder(
@@ -220,12 +200,20 @@ class InputData(object):
             table = tf.contrib.lookup.index_table_from_tensor(
                 mapping=self.vocab,
                 default_value=0)
-            features['input_ids'] = table.lookup(features['inputs'])
+
+            inputs = tf.sparse.to_dense(features['inputs'], default_value='')
+            input_ids = table.lookup(inputs)
+            input_ids = input_ids[:, -self.max_seq_length + 1:]
+            left = self.max_seq_length - 1 - tf.shape(input_ids)[1]
+            paddings = [[0, 0], [left, 0]]
+            input_ids = tf.pad(input_ids, paddings)
+            features['input_ids'] = input_ids
             features['to_ranking_inputs'] = tf.sparse.to_dense(
                 features['to_ranking_inputs'], default_value='')
             features['to_ranking_input_ids'] = table.lookup(
                 features['to_ranking_inputs']
             )
+            tf.logging.info(features)
             return tf.estimator.export.ServingInputReceiver(
                 features, receiver_tensors)
 
