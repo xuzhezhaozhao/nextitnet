@@ -150,7 +150,7 @@ class InputData(object):
             ds.prefetch(100)
             if self.shuffle:
                 ds = ds.shuffle(buffer_size=1000)
-            ds = ds.batch(self.batch_size)
+            ds = ds.batch(self.batch_size, drop_remainder=True)
             ds = ds.repeat(self.epoch)
             return ds
 
@@ -163,7 +163,7 @@ class InputData(object):
                 self.py_wrapper,
                 num_parallel_calls=self.num_parallel_calls)
             ds.prefetch(100)
-            ds = ds.batch(self.eval_batch_size)
+            ds = ds.batch(self.eval_batch_size, drop_remainder=True)
             return ds
         return eval_input_fn
 
