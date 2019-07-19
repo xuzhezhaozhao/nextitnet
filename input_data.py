@@ -48,6 +48,7 @@ class InputData(object):
         counter = Counter()
         cnt = 0
         for line in open(data_path):
+            line = line.strip()
             cnt += 1
             if cnt % 200000 == 0:
                 tf.logging.info("Process {} lines ...".format(cnt))
